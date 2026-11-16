@@ -13,6 +13,9 @@ on:
       language:
         description: "Firmware language"
         default: "en-US"
+      hide_emoji:
+        description: "Hide the centre emotion icon (true/false)"
+        default: "true"
 
 permissions:
   contents: read
@@ -44,6 +47,22 @@ jobs:
             echo "No OTA_URL secret set; device will use the default and can be changed in the Wi-Fi setup page"
           fi
 
+      - name: Hide centre emotion icon (patched at build time, repo source untouched)
+        if: ${{ inputs.hide_emoji != 'false' }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          p = "main/display/lcd_display.cc"
+          s = open(p, encoding="utf-8").read()
+          a = "lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, 0);"
+          b = "lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);"
+          assert s.count(a) == 1 and s.count(b) == 1, "lcd_display.cc changed upstream; patch needs updating"
+          s = s.replace(a, a + "\n    lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);  // patched: hide emotion icon")
+          s = s.replace(b, "/* patched: keep emotion icon hidden */")
+          open(p, "w", encoding="utf-8").write(s)
+          print("emotion icon hidden")
+          PY
+
       - name: Build
         shell: bash
         run: |
@@ -57,5 +76,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: sticks3-${{ inputs.language }}-${{ inputs.wake_word }}-${{ github.sha }}
-          path: build/merged-binary.bin
+          path: |
+            build/merged-binary.bin
+            build/xiaozhi.bin
           if-no-files-found: error
