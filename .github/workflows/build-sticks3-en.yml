@@ -1,0 +1,61 @@
+# 放到 fork 仓库的 .github/workflows/ 下：只编译英文版 M5StickS3 固件
+# 触发方式：GitHub 仓库 Actions 页面 → "Build StickS3 English" → Run workflow
+# 可选：在仓库 Settings → Secrets and variables → Actions 添加 secret  OTA_URL
+#       （例如 http://你的服务器:8003/xiaozhi/ota/），刷机后就不用再手动填 OTA 地址
+name: Build StickS3 English
+
+on:
+  workflow_dispatch:
+    inputs:
+      wake_word:
+        description: "Wake word model (e.g. wn9_hijoy_tts, wn9_hiesp, disabled)"
+        default: "wn9_hijoy_tts"
+      language:
+        description: "Firmware language"
+        default: "en-US"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v6.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Optional default OTA URL (from secret, not stored in repo)
+        shell: bash
+        env:
+          OTA_URL: ${{ secrets.OTA_URL }}
+        run: |
+          if [[ -n "$OTA_URL" ]]; then
+            python3 - <<'PY'
+          import json, os
+          p = "main/boards/m5stack/stick-s3/config.json"
+          c = json.load(open(p))
+          c["builds"][0]["sdkconfig_append"].append('CONFIG_OTA_URL="%s"' % os.environ["OTA_URL"])
+          json.dump(c, open(p, "w"), indent=4)
+          print("OTA URL baked into firmware")
+          PY
+          else
+            echo "No OTA_URL secret set; device will use the default and can be changed in the Wi-Fi setup page"
+          fi
+
+      - name: Build
+        shell: bash
+        run: |
+          source "$IDF_PATH/export.sh"
+          python scripts/build.py m5stack/stick-s3 --name m5stack-stick-s3 \
+            --language "${{ inputs.language || 'en-US' }}" \
+            --wake-word "${{ inputs.wake_word || 'wn9_hijoy_tts' }}" \
+            --build-options-json '{"display_style":"default","multiline_chat":true}'
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v7
+        with:
+          name: sticks3-${{ inputs.language }}-${{ inputs.wake_word }}-${{ github.sha }}
+          path: build/merged-binary.bin
+          if-no-files-found: error
