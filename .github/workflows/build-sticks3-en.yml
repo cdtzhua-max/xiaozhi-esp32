@@ -63,6 +63,11 @@ jobs:
           print("emotion icon hidden")
           PY
 
+      - name: Add on-device reminders (Joy)
+        shell: bash
+        run: |
+          if [[ -f .github/joy/reminders_patch.py ]]; then python3 .github/joy/reminders_patch.py; else echo "no reminders patch"; fi
+
       - name: Build
         shell: bash
         run: |
