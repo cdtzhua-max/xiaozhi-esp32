@@ -41,6 +41,7 @@ static constexpr size_t kRxSymbols = 96;       // 2 RMT blocks on ESP32-S3 (48 e
 // 0 idle, 1 waiting for Joy to stop talking, 2 capturing, 3 done, 4 timeout, 5 error
 static std::atomic<int> g_state{0};
 static std::atomic<int> g_count{0};
+static std::atomic<int> g_noise{0};   // short bursts seen while capturing (diagnostics)
 static std::string g_name;
 
 static std::string Key(const std::string& in) {
@@ -133,7 +134,7 @@ static std::vector<uint16_t> Capture(int timeout_ms) {
         int left_ms = (int)((deadline - esp_timer_get_time()) / 1000);
         rmt_rx_done_event_data_t ev = {};
         if (left_ms <= 0 || xQueueReceive(q, &ev, pdMS_TO_TICKS(left_ms)) != pdTRUE) break;
-        if (ev.num_symbols < 8) continue;  // noise, keep listening
+        if (ev.num_symbols < 8) { g_noise++; continue; }  // noise, keep listening
         for (size_t i = 0; i < ev.num_symbols; i++) {
             if (ev.received_symbols[i].duration0) out.push_back(ev.received_symbols[i].duration0);
             if (ev.received_symbols[i].duration1) out.push_back(ev.received_symbols[i].duration1);
@@ -200,10 +201,19 @@ static void LearnTask(void* p) {
     for (int i = 0; i < 200 && app.GetDeviceState() == kDeviceStateSpeaking; i++) vTaskDelay(pdMS_TO_TICKS(100));
     vTaskDelay(pdMS_TO_TICKS(400));
     g_state = 2;
+    g_noise = 0;
     if (a->pmic) a->pmic->digitalWrite(3, LOW);
     vTaskDelay(pdMS_TO_TICKS(50));
-    auto d = Capture(12000);
+    app.Schedule([]() {
+        auto* disp = Board::GetInstance().GetDisplay();
+        if (disp) disp->SetChatMessage("system", "Press the remote button NOW");
+    });
+    auto d = Capture(15000);
     if (a->pmic) a->pmic->digitalWrite(3, HIGH);
+    app.Schedule([ok = d.size() >= 8]() {
+        auto* disp = Board::GetInstance().GetDisplay();
+        if (disp) disp->SetChatMessage("system", ok ? "Got it!" : "Nothing received");
+    });
     if (d.size() >= 8) {
         Save(a->key, d);
         g_count = (int)d.size();
@@ -218,7 +228,7 @@ static void LearnTask(void* p) {
 static void RegisterTools(M5PM1* pmic) {
     auto& mcp = McpServer::GetInstance();
     mcp.AddTool("self.ir.learn",
-        "Start learning one TV remote button. The user points their remote at the device and presses the button within about 12 seconds. "
+        "Start learning one TV remote button. The user points their remote at the device and presses the button within about 15 seconds. "
         "name is a short button name like power, vol_up, vol_down, mute, ch_up, ch_down, input. Poll self.ir.status for the result.",
         PropertyList({Property("name", kPropertyTypeString)}),
         [pmic](const PropertyList& props) -> ToolResult {
@@ -241,7 +251,7 @@ static void RegisterTools(M5PM1* pmic) {
         [](const PropertyList&) -> ToolResult {
             static const char* names[] = {"idle", "waiting", "capturing", "done", "timeout", "error"};
             int st = g_state.load();
-            return std::string("{\"state\":\"") + names[st] + "\",\"name\":\"" + g_name + "\",\"count\":" + std::to_string(g_count.load()) + "}";
+            return std::string("{\"state\":\"") + names[st] + "\",\"name\":\"" + g_name + "\",\"count\":" + std::to_string(g_count.load()) + ",\"noise\":" + std::to_string(g_noise.load()) + "}";
         });
     mcp.AddTool("self.ir.send", "Send a learned TV remote button. repeat = how many presses (1-10).",
         PropertyList({Property("name", kPropertyTypeString), Property("repeat", kPropertyTypeInteger, 1, 1, 10)}),
