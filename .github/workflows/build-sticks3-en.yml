@@ -16,6 +16,9 @@ on:
       hide_emoji:
         description: "Hide the centre emotion icon (true/false)"
         default: "true"
+      aec:
+        description: "Software AEC + talk-over (realtime) mode (true/false)"
+        default: "true"
       network:
         description: "wifi = Wi-Fi only; dual = Wi-Fi + 4G (ML307 Cat-1 unit on the Grove port)"
         default: "wifi"
@@ -79,6 +82,14 @@ jobs:
         shell: bash
         run: |
           if [[ -f .github/joy/reminders_patch.py ]]; then python3 .github/joy/reminders_patch.py; else echo "no reminders patch"; fi
+
+      - name: Software AEC + talk-over (Joy)
+        if: ${{ inputs.aec != 'false' }}
+        shell: bash
+        env:
+          AEC_REF_DELAY: ${{ vars.AEC_REF_DELAY || '1440' }}
+        run: |
+          if [[ -f .github/joy/aec_patch.py ]]; then python3 .github/joy/aec_patch.py; else echo "no AEC patch"; fi
 
       - name: Add TV remote via IR (Joy)
         shell: bash
