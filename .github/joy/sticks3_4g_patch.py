@@ -1,16 +1,16 @@
 """
 StickS3 + 4G (ML307 Cat-1, e.g. M5Stack Unit Cat1) dual-network build patch.
 Run in the firmware repo root at build time. Env:
-  GROVE_TX  ESP32 TX pin -> module RX   (default 2, Grove white wire)
-  GROVE_RX  ESP32 RX pin <- module TX   (default 1, Grove yellow wire)
+  GROVE_TX  ESP32 TX pin -> module RX   (default 10, Grove white wire)
+  GROVE_RX  ESP32 RX pin <- module TX   (default 9, Grove yellow wire)
   NET_DEFAULT  0 = start on Wi-Fi, 1 = start on 4G  (default 0)
 Controls on the device:
   side button long press (~2 s)  -> switch Wi-Fi <-> 4G (saved, reboots)
 """
 import os, re
 
-tx = int(os.environ.get("GROVE_TX", "2"))
-rx = int(os.environ.get("GROVE_RX", "1"))
+tx = int(os.environ.get("GROVE_TX", "10"))
+rx = int(os.environ.get("GROVE_RX", "9"))
 net_default = int(os.environ.get("NET_DEFAULT", "0"))
 
 p = "main/boards/m5stack/stick-s3/m5stack_stick_s3.cc"
