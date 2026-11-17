@@ -78,6 +78,11 @@ jobs:
           print("emotion icon hidden")
           PY
 
+      - name: Joy screen layout (subtitles below the status bar, left aligned)
+        shell: bash
+        run: |
+          if [[ -f .github/joy/display_patch.py ]]; then python3 .github/joy/display_patch.py; else echo "no display patch"; fi
+
       - name: Add on-device reminders (Joy)
         shell: bash
         run: |
