@@ -100,7 +100,9 @@ if "BOARD_TYPE_M5STACK_STICK_S3)" not in ks:
 c = "main/boards/m5stack/stick-s3/config.json"
 cj = json.load(open(c))
 app = cj["builds"][0]["sdkconfig_append"]
-for line in ("CONFIG_USE_DEVICE_AEC=y", "CONFIG_WAKE_WORD_DETECTION_IN_LISTENING=y"):
+# (no WAKE_WORD_DETECTION_IN_LISTENING: in realtime mode the device sits in Listening, and a
+#  wake word there only restarts listening silently, so "Hi Joy" got no reply)
+for line in ("CONFIG_USE_DEVICE_AEC=y",):
     if line not in app:
         app.append(line)
 json.dump(cj, open(c, "w"), indent=4)
