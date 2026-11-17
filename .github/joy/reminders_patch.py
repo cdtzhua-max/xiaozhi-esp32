@@ -1,6 +1,6 @@
 # 编译时给 xiaozhi 固件加“设备端提醒”：
 #   MCP 工具 self.reminder.add / self.reminder.list / self.reminder.cancel
-#   提醒存在 NVS（重启不丢），每 15 秒检查一次，到点且设备空闲时用 "[device_call]..." 让服务器播报
+#   提醒存在 NVS（重启不丢），每 5 秒检查一次；到点时若在聆听就先结束对话，空闲后用 "[device_call]..." 让服务器播报
 import sys, re
 p = "main/mcp_server.cc"
 s = open(p, encoding="utf-8").read()
@@ -52,10 +52,14 @@ static void Load() {
     }
 }
 static bool TimeValid() { return time(nullptr) > 1735689600; }  // 2025-01-01 之后才算已同步
+static int64_t last_kick = 0;
 static void Tick(void*) {
     if (!TimeValid()) return;
     int64_t now = time(nullptr);
+    auto& app = Application::GetInstance();
+    auto state = app.GetDeviceState();
     std::string to_say;
+    int64_t oldest_due = 0;
     {
         std::lock_guard<std::mutex> lk(mu);
         bool changed = false;
@@ -67,19 +71,33 @@ static void Tick(void*) {
                 else items.erase(items.begin() + i);
                 changed = true; continue;
             }
-            if (to_say.empty() && Application::GetInstance().GetDeviceState() == kDeviceStateIdle) {
+            if (to_say.empty() && state == kDeviceStateIdle) {
                 to_say = it.msg;
                 if (it.repeat > 0) { while (it.due <= now) it.due += it.repeat; ++i; }
                 else items.erase(items.begin() + i);
                 changed = true; continue;
             }
-            ++i;  // 设备忙，下次再试
+            if (oldest_due == 0 || it.due < oldest_due) oldest_due = it.due;
+            ++i;
         }
         if (changed) Save();
     }
     if (!to_say.empty()) {
         ESP_LOGI(RTAG, "Reminder due: %s", to_say.c_str());
-        Application::GetInstance().WakeWordInvoke("[device_call]" + to_say);
+        app.WakeWordInvoke("[device_call]" + to_say);
+        return;
+    }
+    // 有到点的提醒但设备不空闲：让它回到待机，下一次检查（5 秒后）再播报
+    if (oldest_due && now - last_kick >= 10) {
+        if (state == kDeviceStateListening && !app.IsVoiceDetected()) {
+            last_kick = now;
+            ESP_LOGI(RTAG, "Reminder due while listening: closing the conversation first");
+            app.WakeWordInvoke("");  // 在聆听状态下，这会关闭当前对话通道
+        } else if (state == kDeviceStateSpeaking && now - oldest_due >= 60) {
+            last_kick = now;  // 正在说话/放电台超过 1 分钟：打断
+            ESP_LOGI(RTAG, "Reminder overdue while speaking: interrupting");
+            app.WakeWordInvoke("");
+        }
     }
 }
 static void Init() {
@@ -89,7 +107,7 @@ static void Init() {
     esp_timer_create_args_t args = {};
     args.callback = &Tick; args.name = "joy_reminders";
     esp_timer_create(&args, &timer);
-    esp_timer_start_periodic(timer, 15ULL * 1000 * 1000);
+    esp_timer_start_periodic(timer, 5ULL * 1000 * 1000);
 }
 }  // namespace joy_reminders
 // ===== JOY_REMINDERS end =====
