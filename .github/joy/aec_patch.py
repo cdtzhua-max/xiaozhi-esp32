@@ -100,7 +100,25 @@ if "BOARD_TYPE_M5STACK_STICK_S3)" not in ks:
 c = "main/boards/m5stack/stick-s3/config.json"
 cj = json.load(open(c))
 app = cj["builds"][0]["sdkconfig_append"]
-if "CONFIG_USE_DEVICE_AEC=y" not in app:
-    app.append("CONFIG_USE_DEVICE_AEC=y")
+for line in ("CONFIG_USE_DEVICE_AEC=y", "CONFIG_WAKE_WORD_DETECTION_IN_LISTENING=y"):
+    if line not in app:
+        app.append(line)
 json.dump(cj, open(c, "w"), indent=4)
+# 4) realtime mode skips wake word detection while Joy is speaking -> "Hi Joy" could not interrupt.
+#    Keep the (AEC-cleaned) wake word running while speaking in realtime mode too.
+a = "main/application.cc"
+asrc = open(a, encoding="utf-8").read()
+blk = """            if (listening_mode_ != kListeningModeRealtime) {
+                audio_service_.EnableVoiceProcessing(false);
+                // Only AFE wake word can be detected in speaking mode
+                audio_service_.EnableWakeWordDetection(audio_service_.IsAfeWakeWord());
+            }"""
+if "joy: wake word while speaking" not in asrc:
+    assert asrc.count(blk) == 1, "application.cc speaking block changed upstream"
+    asrc = asrc.replace(blk, blk + """ else {
+                // joy: wake word while speaking (realtime) so "Hi Joy" interrupts
+                audio_service_.EnableWakeWordDetection(audio_service_.IsAfeWakeWord());
+            }""")
+    open(a, "w", encoding="utf-8").write(asrc)
+
 print(f"StickS3 software AEC applied (ref delay {delay} samples), realtime mode on")
