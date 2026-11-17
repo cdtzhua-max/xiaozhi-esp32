@@ -102,9 +102,12 @@ cj = json.load(open(c))
 app = cj["builds"][0]["sdkconfig_append"]
 # (no WAKE_WORD_DETECTION_IN_LISTENING: in realtime mode the device sits in Listening, and a
 #  wake word there only restarts listening silently, so "Hi Joy" got no reply)
-for line in ("CONFIG_USE_DEVICE_AEC=y",):
-    if line not in app:
-        app.append(line)
+# AEC_REALTIME=true -> full talk-over (mic open while Joy speaks). On StickS3 the echo is too strong:
+# Joy ended up hearing and answering herself, so default is half-duplex: the AEC-cleaned mic is only
+# used for the "Hi Joy" wake word while she speaks (interrupt), and nothing is sent to the server.
+if os.environ.get("AEC_REALTIME", "false").lower() == "true":
+    if "CONFIG_USE_DEVICE_AEC=y" not in app:
+        app.append("CONFIG_USE_DEVICE_AEC=y")
 json.dump(cj, open(c, "w"), indent=4)
 # 4) realtime mode skips wake word detection while Joy is speaking -> "Hi Joy" could not interrupt.
 #    Keep the (AEC-cleaned) wake word running while speaking in realtime mode too.
@@ -123,4 +126,4 @@ if "joy: wake word while speaking" not in asrc:
             }""")
     open(a, "w", encoding="utf-8").write(asrc)
 
-print(f"StickS3 software AEC applied (ref delay {delay} samples), realtime mode on")
+print(f"StickS3 software AEC applied (ref delay {delay} samples), realtime={os.environ.get('AEC_REALTIME', 'false')}")
