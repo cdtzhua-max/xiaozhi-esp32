@@ -31,6 +31,9 @@ on:
       net_default:
         description: "4G build: network on first boot (0 = Wi-Fi, 1 = 4G)"
         default: "0"
+      phone_kbd:
+        description: "Bluetooth phone keyboard for iPhone shortcuts (true/false)"
+        default: "true"
 
 permissions:
   contents: read
@@ -100,6 +103,12 @@ jobs:
         shell: bash
         run: |
           if [[ -f .github/joy/ir_patch.py ]]; then python3 .github/joy/ir_patch.py; else echo "no IR patch"; fi
+
+      - name: Phone keyboard over Bluetooth (Joy)
+        if: ${{ inputs.phone_kbd != 'false' }}
+        shell: bash
+        run: |
+          if [[ -f .github/joy/ble_kbd_patch.py ]]; then python3 .github/joy/ble_kbd_patch.py; else echo "no BLE keyboard patch"; fi
 
       - name: Wi-Fi + 4G dual network (optional)
         if: ${{ inputs.network == 'dual' }}
